@@ -169,33 +169,42 @@ loss_fn = nn.BCEWithLogitsLoss()
 ```
 BCEWithLogitsLoss combines the Sigmoid activation and Binary Cross Entropy into a single operation that is more numerically stable and is the recommended approach in PyTorch.
 
+#### More Features
 
+* **Dropout**
+As neural networks become larger, they may memorize the training data instead of learning general patterns. Dropout is a regularization technique that randomly disables a percentage of neurons during training.
 
-
-
-This is a network with 3 fully-connected layers. Each layer is created in PyTorch using the nn.Linear(x, y) syntax which the first argument is the number of input to the layer and the second is the number of output. Between each layer, a rectified linear activation is used, but at the output, sigmoid activation is applied such that the output value is between 0 and 1. This is a typical network. A deep learning model is to have a lot of such layers in a model.
-
-Cuando entrenamos una red neuronal, generalmente necesitamos dos ingredientes:
-
-Una función de coste que nos sirva para calcular el error del modelo. En este sentido, el módulo torch.nn cuenta con diferentes clases para calcular errores, siendo las más conocidas nn.CrossEntropyLoss (para clasificación) y nn.MSELoss para regresión. De todos modos, puedes encontrar todas las opciones posibles aquí.
-Un optimizador que nos permita optimizar los parámetros de los modelos a la hora de aplicar el back-propagation de la capa de salida a las capas ocultas. Para ello, Pytorch cuenta con el módulo torch.optim, el cual engloba diferentes funciones de optimización, siendo los más usados Adam y SGD. Puedes encontrar todos los algortimos aquí.
-
+Example:
 ```
-loss_fn = nn.BCELoss() # binary cross-entropy loss
-optimizer = optim.Adam(model.parameters(), lr=0.001)
-n_epochs = 500
-batch_size = 5
-
-for epoch in range(n_epochs):
-    for i in range(0, len(X), batch_size):
-        Xbatch = X[i:i+batch_size]
-        y_pred = model(Xbatch)
-        ybatch = y[i:i+batch_size]
-        
-        loss = loss_fn(y_pred, ybatch)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-    
-    print(f'Finished epoch {epoch}, latest loss {loss}')    
+nn.Linear(32, 16),
+nn.ReLU(),
+nn.Dropout(0.2)
 ```
+This forces the network to learn more robust representations and reduces overfitting.
+
+* **Normalize Activations**
+BatchNorm1d normalizes the outputs of a layer during training. A common pattern is:
+```
+Linear --> BatchNorm --> ReLU --> Dropout
+```
+Batch Normalization often stabilizes training and allows the optimizer to converge faster.
+
+* **Dataset and DataLoader**
+Instead of manually creating mini-batches with array slicing, PyTorch provides the Dataset and DataLoader classes.
+
+DataLoader automatically:
+
+* creates mini-batches,
+* shuffles the training data,
+* loads batches efficiently,
+* simplifies the training loop.
+
+These classes are the standard way of feeding data into neural networks.
+
+* **Imbalaced Data**
+Many real-world datasets contain significantly more samples from one class than the other. For binary classification problems, PyTorch provides the pos_weight parameter in BCEWithLogitsLoss to give more importance to the minority class during training. This is particularly useful for applications such as fraud detection, anomaly detection, and medical diagnosis.
+
+* **Early Stopping**
+Training for too many epochs may cause the model to overfit the training data. Early stopping monitors the validation loss and automatically stops training when the model no longer improves. It also saves the best-performing version of the model.
+
+
