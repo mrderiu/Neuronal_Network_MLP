@@ -1,14 +1,12 @@
 from pathlib import Path
 
-# --- Rutas ---
+# --- Path ---
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_PATH = PROJECT_ROOT / "data" / "input" / "AdultCensusIncome.csv"
 
-# --- Columnas ---
+# --- Columns ---
 TARGET_COLUMN = "income"
 
-# OJO: confirma si tu CSV usa "_" o "-" en estos nombres de columna.
-# Si no coinciden exactamente, ColumnTransformer lanzará un KeyError.
 NUMERICAL_FEATURES = [
     "age",
     "fnlwgt",
@@ -29,12 +27,17 @@ CATEGORICAL_FEATURES = [
     "native_country",
 ]
 
-# --- Split de datos ---
-TEST_SIZE = 0.30          # proporción para (validation + test)
-VALIDATION_TEST_SPLIT = 0.50  # de ese 30%, la mitad para validation y la mitad para test
+# --- Data Split ---
+TEST_SIZE = 0.30
+VALIDATION_TEST_SPLIT = 0.50
 RANDOM_STATE = 42
 
-# --- Hiperparámetros del modelo ---
+# --- Hyperparameters ---
 EPOCHS = 50
 BATCH_SIZE = 32
 LEARNING_RATE = 1e-3
+
+# --- Early Stopping ---
+# Nº de epochs consecutivos sin mejora en val_loss antes de detener
+# el entrenamiento. Al finalizar, se restauran los pesos del mejor epoch.
+EARLY_STOPPING_PATIENCE = 10
