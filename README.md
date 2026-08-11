@@ -81,13 +81,13 @@ The numbers in each nn.Linear(in_features, out_features) layer define the shape 
 * The first number (in_features) is the number of values the layer receives as input.
 * The second number (out_features) is the number of values (or neurons) the layer produces as output.
 
-The following the details of the different layers:
+The following are the details of the different layers:
 
 * First Layer: nn.Linear(8, 12) --> Receives 8 input values and produce 12 output values. This means that each input sample is represented as a vector of 8 numbers, and the layer transforms it into a new vector containing 12 values.
 * Second Layer: nn.Linear(12, 8) --> The previous layer produced 12 values, so this layer must accept exactly 12 inputs. It transforms those 12 values into a new representation containing 8 values.
 * Output Layer: nn.Linear(8, 1) --> The final hidden layer produces 8 values. The output layer combines these into a single output value.
 
-The numbers determine the capacity of the network. For example, nn.Linear(8, 12) does not mean that the dataset has 12 features. It simply means that it receives 8 numbers, compute a richer internal representation using 12 neurons. Likewise, nn.Linear(12, 8) compresses those 12 learned features into 8 new features. The hidden layers are learning increasingly useful representations of the input data.
+The numbers determine the capacity of the network. For example, nn.Linear(8, 12) does not mean that the dataset has 12 features. It simply means that the layer receives 8 numbers and computes a richer internal representation using 12 neurons. Likewise, nn.Linear(12, 8) compresses those 12 learned features into 8 new features. The hidden layers are learning increasingly useful representations of the input data.
 
 The numbers 12 and 8 correspond to the number of neurons in the hidden layers. A neuron computes output = activation(weight × input + bias). Each neuron learns a different pattern from the input data.
 
@@ -201,10 +201,88 @@ DataLoader automatically:
 
 These classes are the standard way of feeding data into neural networks.
 
-* **Imbalaced Data**
+* **Imbalanced Data**
 Many real-world datasets contain significantly more samples from one class than the other. For binary classification problems, PyTorch provides the pos_weight parameter in BCEWithLogitsLoss to give more importance to the minority class during training. This is particularly useful for applications such as fraud detection, anomaly detection, and medical diagnosis.
 
 * **Early Stopping**
 Training for too many epochs may cause the model to overfit the training data. Early stopping monitors the validation loss and automatically stops training when the model no longer improves. It also saves the best-performing version of the model.
 
+### A Note on ResNet18 (and the ResNet Family)
 
+The name "ResNet18" sometimes shows up loosely attached to MLP code, but it actually refers to a specific, well-defined architecture that has nothing to do with the models above — it's worth understanding what it really is so the name isn't reused incorrectly.
+
+**ResNet** (*Residual Network*) is a convolutional architecture introduced by He et al. (2015) for image classification. Its key contribution is the **residual (skip) connection**: instead of a block learning a direct mapping `H(x)`, it learns a residual `F(x)` and adds the original input back:
+
+```
+output = F(x) + x
+```
+
+This shortcut lets gradients flow directly through the addition during backpropagation, which solves the **vanishing gradient / degradation problem** that made very deep plain CNNs perform *worse* than shallower ones. Thanks to residual connections, networks with dozens or hundreds of layers became trainable.
+
+**ResNet18** specifically:
+* 18 refers to the number of layers with learnable weights (convolutional + fully connected), not to any hyperparameter you choose — it's a fixed, published architecture.
+* Built from **basic blocks**: each block has two 3×3 convolutional layers, and the input is added to the block's output via the skip connection.
+* It's the smallest/shallowest member of the ResNet family, commonly used as a lightweight baseline or for transfer learning on smaller datasets.
+
+**Other ResNet variants**, for reference:
+
+| Variant | Depth | Block type | Notes |
+|---|---|---|---|
+| ResNet18 | 18 layers | Basic block (2× conv 3×3) | Lightest, fastest, good baseline |
+| ResNet34 | 34 layers | Basic block (2× conv 3×3) | Deeper version of the same block type |
+| ResNet50 | 50 layers | Bottleneck block (1×1 → 3×3 → 1×1) | Switches to bottleneck blocks to keep the parameter count manageable despite the extra depth |
+| ResNet101 | 101 layers | Bottleneck block | Higher capacity, more compute |
+| ResNet152 | 152 layers | Bottleneck block | Deepest common variant, used when accuracy matters more than speed |
+
+The **bottleneck block** (used from ResNet50 onward) first reduces the number of channels with a 1×1 convolution, applies the expensive 3×3 convolution on that smaller representation, and then restores the channel count with another 1×1 convolution. This keeps computation and memory reasonable even as depth increases.
+
+**Why it doesn't apply to this project:** ResNet is a *convolutional* architecture designed for image (grid-structured) data. This repository works with **tabular data** (Adult Census Income), processed as flat feature vectors through `nn.Linear` layers, so there are no convolutions or spatial structure for ResNet's blocks to operate on. The two MLP variants used here (see below) are unrelated to ResNet — the residual **idea** (skip connections) can in principle be adapted to plain fully-connected networks, but that's a different, non-standard architecture and isn't what "ResNet18" refers to.
+
+## Implementación en este repositorio
+
+Este repositorio aplica la teoría anterior a un caso real de clasificación binaria: predecir si una persona gana más de 50K al año a partir del dataset **Adult Census Income**.
+
+### Estructura del proyecto
+
+```
+main.py                 # Orquesta el pipeline completo (MLP)
+main_xgboost.py          # Pipeline equivalente con XGBoost, para comparar
+src/
+├── config.py            # Rutas, columnas, hiperparámetros, selección de modelo
+├── data_loader.py        # Carga del CSV y split train/validation/test
+├── preprocessing.py      # Limpieza de valores y ColumnTransformer (impute + scale + one-hot)
+├── models.py              # Arquitecturas del MLP + factory build_model()
+├── early_stopping.py      # Implementación de Early Stopping
+├── train.py               # Loop de entrenamiento (forward, loss, backward, optimizer)
+└── evaluate.py            # Métricas sobre el conjunto de test
+```
+
+### Variantes de modelo (`src/models.py`)
+
+Ambas arquitecturas devuelven **logits** (sin `Sigmoid` en la salida), porque `train.py` usa siempre `nn.BCEWithLogitsLoss`, que ya incorpora el sigmoid de forma numéricamente estable y permite ponderar la clase minoritaria con `pos_weight`. Mezclar un modelo con `Sigmoid` y `BCEWithLogitsLoss` aplicaría el sigmoid dos veces y rompería las probabilidades de salida, así que el proyecto mantiene esta regla de forma consistente en todas las variantes.
+
+| Variante | Arquitectura | Cuándo usarla |
+|---|---|---|
+| `"simple"` | `Linear → ReLU` ×3 | Modelo base, sin regularización. Punto de partida o baseline. |
+| `"regularized"` | `Linear → BatchNorm → ReLU → Dropout` ×2 | Añade normalización y regularización para reducir overfitting. Recomendada por defecto. |
+
+La variante activa se elige en `config.MODEL_VARIANT` y se construye mediante la factory `build_model(name, input_dim)`, sin tener que modificar `main.py`.
+
+### Manejo del desbalance de clases
+
+La clase positiva (`income > 50K`) es minoritaria en el dataset. `train.py` calcula automáticamente `pos_weight = n_neg / n_pos` a partir del set de entrenamiento y lo pasa a `BCEWithLogitsLoss`, tal como se describe en la sección de *Imbalanced Data*.
+
+### Early Stopping (`src/early_stopping.py`)
+
+La clase `EarlyStopping` implementa exactamente el comportamiento descrito en la teoría:
+
+- Monitoriza `val_loss` en cada epoch.
+- Si no mejora durante `config.EARLY_STOPPING_PATIENCE` epochs consecutivos, detiene el entrenamiento.
+- Guarda internamente los pesos del mejor epoch y los restaura al final, de forma que `train_model()` nunca devuelve un modelo peor que el mejor visto durante el entrenamiento.
+
+### Ejecución
+
+```bash
+pip install -r requirements.txt
+python main.py
+```
